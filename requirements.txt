@@ -1,0 +1,8 @@
+aiohttp
+aiohttp-socks
+fake-useragent
+colorama
+pytz
+curl-cffi
+web3
+eth-account

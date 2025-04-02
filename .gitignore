@@ -1,0 +1,26 @@
+# Игнорируем папки с данными
+/data/
+/pict/
+
+# Игнорируем виртуальное окружение
+.venv/
+venv/
+env/
+
+# Игнорируем кэш Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Игнорируем конфигурационные файлы IDE
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Логи и временные файлы
+*.log
+*.tmp
+.DS_Store 

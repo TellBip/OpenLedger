@@ -11,6 +11,9 @@ import hashlib
 from eth_account.messages import encode_defunct
 import sys
 
+# Инициализация colorama для правильного отображения цветов
+init(autoreset=True)
+
 wib = pytz.timezone('Europe/Berlin')
 
 class OepnLedger:

@@ -336,27 +336,27 @@ class OepnLedger:
             
             # 1. Получаем необходимые данные для транзакции через RPC
             try:
-                # Создаем провайдер с поддержкой прокси
+                # Создаем общую сессию для всех запросов
+                import requests
+                from requests.adapters import HTTPAdapter
+                from urllib3.util.retry import Retry
+                
+                # Создаем сессию с повторными попытками
+                session = requests.Session()
+                retry = Retry(total=3, backoff_factor=0.5)
+                adapter = HTTPAdapter(max_retries=retry)
+                session.mount('http://', adapter)
+                session.mount('https://', adapter)
+                
+                # Если используем прокси, применяем его к сессии
                 if use_proxy and proxy:
-                    import requests
-                    from requests.adapters import HTTPAdapter
-                    from urllib3.util.retry import Retry
-                    
-                    session = requests.Session()
-                    retry = Retry(total=3, backoff_factor=0.5)
-                    adapter = HTTPAdapter(max_retries=retry)
-                    session.mount('http://', adapter)
-                    session.mount('https://', adapter)
-                    
-                    # Устанавливаем прокси для сессии
-                    session.proxies = {'http': proxy, 'https': proxy}
-                    
-                    # Создаем кастомный провайдер с нашей сессией
-                    provider = Web3.HTTPProvider("https://rpctn.openledger.xyz/", session=session)
-                    w3 = Web3(provider)
-                    self.print_message(address, proxy, Fore.GREEN, "Using proxy for RPC connection")
-                else:
-                    w3 = Web3(Web3.HTTPProvider("https://rpctn.openledger.xyz/"))
+                    formatted_proxy = self.format_proxy_url(proxy)
+                    session.proxies = {'http': formatted_proxy, 'https': formatted_proxy}
+                    self.print_message(address, proxy, Fore.GREEN, "Using proxy for API/RPC connections")
+                
+                # Создаем провайдер с поддержкой прокси
+                provider = Web3.HTTPProvider("https://rpctn.openledger.xyz/", session=session)
+                w3 = Web3(provider)
                 
                 # Получаем chainId
                 chain_id = w3.eth.chain_id
@@ -571,12 +571,14 @@ class OepnLedger:
                     
                     #self.log(f"{Fore.CYAN}Отправляем в API signedTx: {api_payload}{Style.RESET_ALL}")
                     
+                    # Используем созданную сессию для API-запроса вместо прямого вызова curl_cffi
+                    from curl_cffi import requests as curl_requests
                     claim_response = await asyncio.to_thread(
-                        requests.post,
+                        curl_requests.post,
                         url=claim_url,
                         headers=headers,
                         json=api_payload,
-                        proxy=proxy,
+                        proxy=formatted_proxy if use_proxy and proxy else None,
                         timeout=60,
                         impersonate="safari15_5",
                         verify=False
@@ -600,8 +602,7 @@ class OepnLedger:
                         return {'claimed': True}  # Возвращаем успех если API сообщает об успехе
                 
                 except Exception as api_e:
-                    
-                    self.print_message(address, proxy, Fore.RED, "Error processing reward via API")
+                    self.print_message(address, proxy, Fore.RED, f"Error processing reward via API: {str(api_e)}")
                 
                 # Проверяем текущий статус награды
                 try:
@@ -641,7 +642,8 @@ class OepnLedger:
         }
 
         try:
-            response = await asyncio.to_thread(requests.get, url=url, headers=headers, proxy=proxy, timeout=60, impersonate="safari15_5", verify=False)
+            formatted_proxy = self.format_proxy_url(proxy) if use_proxy and proxy else None
+            response = await asyncio.to_thread(requests.get, url=url, headers=headers, proxy=formatted_proxy, timeout=60, impersonate="safari15_5", verify=False)
             response.raise_for_status()
             result = response.json()
             return result['data']
@@ -691,7 +693,8 @@ class OepnLedger:
         }
         while True:
             try:
-                response = await asyncio.to_thread(requests.post, url=url, headers=headers, data=data, proxy=proxy, timeout=60, impersonate="safari15_5", verify=False)
+                formatted_proxy = self.format_proxy_url(proxy) if use_proxy and proxy else None
+                response = await asyncio.to_thread(requests.post, url=url, headers=headers, data=data, proxy=formatted_proxy, timeout=60, impersonate="safari15_5", verify=False)
                 response.raise_for_status()
                 return response.json()
             except Exception as e:

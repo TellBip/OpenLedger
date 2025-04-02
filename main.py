@@ -4,17 +4,82 @@ from datetime import datetime
 from colorama import *
 import asyncio, random, base64, uuid, json, os, pytz
 from web3 import Web3
+from web3.providers import HTTPProvider
 from eth_account import Account
 import binascii
 import re
 import hashlib
 from eth_account.messages import encode_defunct
 import sys
+import urllib.request
+import urllib.parse
+import http.client
+import socket
 
 # Инициализация colorama для правильного отображения цветов
 init(autoreset=True)
 
 wib = pytz.timezone('Europe/Berlin')
+
+# Кастомный провайдер для Web3 с поддержкой прокси
+class ProxyHTTPProvider(HTTPProvider):
+    def __init__(self, endpoint_uri, proxies=None, **kwargs):
+        super().__init__(endpoint_uri, **kwargs)
+        self.proxies = proxies
+
+    def make_request(self, method, params):
+        self.logger.debug("Making request HTTP. URI: %s, Method: %s",
+                          self.endpoint_uri, method)
+        request_data = self.encode_rpc_request(method, params)
+        
+        # Если прокси не указан, используем стандартное поведение
+        if not self.proxies:
+            return super().make_request(method, params)
+        
+        try:
+            # Подготавливаем запрос с поддержкой прокси
+            proxy_url = self.proxies.get('http') or self.proxies.get('https')
+            if not proxy_url:
+                return super().make_request(method, params)
+                
+            # Парсим прокси URL
+            parsed_proxy = urllib.parse.urlparse(proxy_url)
+            proxy_host = parsed_proxy.hostname
+            proxy_port = parsed_proxy.port
+            proxy_auth = None
+            
+            if parsed_proxy.username and parsed_proxy.password:
+                auth = f"{parsed_proxy.username}:{parsed_proxy.password}"
+                proxy_auth = f"Basic {base64.b64encode(auth.encode()).decode()}"
+            
+            # Парсим URL конечной точки
+            parsed_endpoint = urllib.parse.urlparse(self.endpoint_uri)
+            is_https = parsed_endpoint.scheme == 'https'
+            
+            # Создаем соединение с прокси
+            if is_https:
+                conn = http.client.HTTPSConnection(proxy_host, proxy_port)
+                conn.set_tunnel(parsed_endpoint.hostname, parsed_endpoint.port or 443)
+            else:
+                conn = http.client.HTTPConnection(proxy_host, proxy_port)
+            
+            # Добавляем заголовки
+            headers = {'Content-Type': 'application/json'}
+            if proxy_auth:
+                headers['Proxy-Authorization'] = proxy_auth
+                
+            # Отправляем запрос
+            conn.request('POST', self.endpoint_uri, body=request_data, headers=headers)
+            response = conn.getresponse()
+            
+            # Читаем ответ
+            response_data = response.read().decode()
+            
+            # Возвращаем ответ в формате, который ожидает Web3
+            return json.loads(response_data)
+            
+        except Exception as e:
+            raise ValueError(f"Proxy request failed: {str(e)}")
 
 class OepnLedger:
     def __init__(self) -> None:
@@ -308,24 +373,14 @@ class OepnLedger:
             try:
                 # Создаем провайдер с поддержкой прокси
                 if use_proxy and proxy:
-                    import requests
-                    from requests.adapters import HTTPAdapter
-                    from urllib3.util.retry import Retry
-                    
-                    session = requests.Session()
-                    retry = Retry(total=3, backoff_factor=0.5)
-                    adapter = HTTPAdapter(max_retries=retry)
-                    session.mount('http://', adapter)
-                    session.mount('https://', adapter)
-                    
-                    # Устанавливаем прокси для сессии
-                    session.proxies = {'http': proxy, 'https': proxy}
-                    
-                    # Создаем кастомный провайдер с нашей сессией
-                    provider = Web3.HTTPProvider("https://rpctn.openledger.xyz/", 
-                                               request_kwargs={'session': session})
+                    # Используем наш кастомный провайдер
+                    proxies = {'http': proxy, 'https': proxy}
+                    provider = ProxyHTTPProvider(
+                        "https://rpctn.openledger.xyz/", 
+                        proxies=proxies
+                    )
                     w3 = Web3(provider)
-                    self.print_message(address, proxy, Fore.GREEN, "Using proxy for RPC connection")
+                    self.print_message(address, proxy, Fore.GREEN, "Using custom proxy for RPC connection")
                 else:
                     w3 = Web3(Web3.HTTPProvider("https://rpctn.openledger.xyz/"))
                 
@@ -512,7 +567,6 @@ class OepnLedger:
                     #self.log(f"{Fore.CYAN}Сначала отправляем запрос через API{Style.RESET_ALL}")
                     
                     # Обновляем nonce перед отправкой в API
-                    # Используем тот же w3 объект, который уже настроен с прокси
                     api_nonce = w3.eth.get_transaction_count(Web3.to_checksum_address(address), 'pending')
                     #self.log(f"{Fore.CYAN}Nonce для API-запроса: {api_nonce}{Style.RESET_ALL}")
                     

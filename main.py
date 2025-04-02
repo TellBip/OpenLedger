@@ -10,6 +10,7 @@ import re
 import hashlib
 from eth_account.messages import encode_defunct
 import sys
+import urllib.parse
 
 # Инициализация colorama для правильного отображения цветов
 init(autoreset=True)
@@ -109,6 +110,35 @@ class OepnLedger:
             return proxies
         return f"http://{proxies}"
 
+    def format_proxy_url(self, proxy_str):
+        """Форматирует URL прокси для безопасного использования со сложными именами пользователей и паролями"""
+        if not proxy_str:
+            return None
+            
+        # Проверяем, содержит ли прокси схему
+        schemes = ["http://", "https://", "socks4://", "socks5://"]
+        scheme = "http://"
+        for s in schemes:
+            if proxy_str.startswith(s):
+                scheme = s
+                proxy_str = proxy_str[len(s):]
+                break
+        
+        # Разделяем на части: user:pass@host:port
+        if '@' in proxy_str:
+            auth, hostport = proxy_str.split('@', 1)
+            
+            # Кодируем только имя пользователя и пароль
+            if ':' in auth:
+                user, password = auth.split(':', 1)
+                auth = f"{urllib.parse.quote(user)}:{urllib.parse.quote(password)}"
+            else:
+                auth = urllib.parse.quote(auth)
+                
+            return f"{scheme}{auth}@{hostport}"
+        else:
+            return f"{scheme}{proxy_str}"
+        
     def get_next_proxy_for_account(self, account):
         if account not in self.account_proxies:
             if not self.proxies:
@@ -116,7 +146,7 @@ class OepnLedger:
             proxy = self.check_proxy_schemes(self.proxies[self.proxy_index])
             self.account_proxies[account] = proxy
             self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
-        return self.account_proxies[account]
+        return self.format_proxy_url(self.account_proxies[account])
 
     def rotate_proxy_for_account(self, account):
         if not self.proxies:
@@ -124,7 +154,7 @@ class OepnLedger:
         proxy = self.check_proxy_schemes(self.proxies[self.proxy_index])
         self.account_proxies[account] = proxy
         self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
-        return proxy
+        return self.format_proxy_url(proxy)
     
     def generate_register_message(self, address: str, worker_id: str, browser_id: str, msg_type: str):
         register_message = {

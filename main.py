@@ -57,7 +57,7 @@ class OepnLedger:
        |_|                                |___/           
      
         {Style.RESET_ALL}
-{Fore.GREEN + Style.BRIGHT}Developed by: @Tell_Bip{Style.RESET_ALL}
+{Fore.GREEN + Style.BRIGHT}Developed by: {Fore.BLUE + Style.BRIGHT}@Tell_Bip{Style.RESET_ALL}
 {Fore.GREEN + Style.BRIGHT}Our Telegram channel:{Style.RESET_ALL} {Fore.BLUE + Style.BRIGHT}\x1b]8;;{telegram_link}\x07{telegram_link}\x1b]8;;\x07{Style.RESET_ALL}
         """)
 

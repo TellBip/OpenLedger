@@ -305,9 +305,30 @@ class OepnLedger:
             #self.log(f"{Fore.CYAN}Creating and signing transaction for claim_reward{Style.RESET_ALL}")
             
             # 1. Получаем необходимые данные для транзакции через RPC
-            w3 = Web3(Web3.HTTPProvider("https://rpctn.openledger.xyz/"))
-            
             try:
+                # Создаем провайдер с поддержкой прокси
+                if use_proxy and proxy:
+                    import requests
+                    from requests.adapters import HTTPAdapter
+                    from urllib3.util.retry import Retry
+                    
+                    session = requests.Session()
+                    retry = Retry(total=3, backoff_factor=0.5)
+                    adapter = HTTPAdapter(max_retries=retry)
+                    session.mount('http://', adapter)
+                    session.mount('https://', adapter)
+                    
+                    # Устанавливаем прокси для сессии
+                    session.proxies = {'http': proxy, 'https': proxy}
+                    
+                    # Создаем кастомный провайдер с нашей сессией
+                    provider = Web3.HTTPProvider("https://rpctn.openledger.xyz/", 
+                                               request_kwargs={'session': session})
+                    w3 = Web3(provider)
+                    self.print_message(address, proxy, Fore.GREEN, "Using proxy for RPC connection")
+                else:
+                    w3 = Web3(Web3.HTTPProvider("https://rpctn.openledger.xyz/"))
+                
                 # Получаем chainId
                 chain_id = w3.eth.chain_id
                 #self.log(f"{Fore.CYAN}Chain ID: {chain_id}{Style.RESET_ALL}")
@@ -491,6 +512,7 @@ class OepnLedger:
                     #self.log(f"{Fore.CYAN}Сначала отправляем запрос через API{Style.RESET_ALL}")
                     
                     # Обновляем nonce перед отправкой в API
+                    # Используем тот же w3 объект, который уже настроен с прокси
                     api_nonce = w3.eth.get_transaction_count(Web3.to_checksum_address(address), 'pending')
                     #self.log(f"{Fore.CYAN}Nonce для API-запроса: {api_nonce}{Style.RESET_ALL}")
                     

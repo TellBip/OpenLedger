@@ -221,20 +221,24 @@ class OepnLedger:
     def print_question(self):
         while True:
             try:
-                print(f"{Fore.GREEN + Style.BRIGHT}1. Farm & Claim Daily Reward{Style.RESET_ALL}")
-                print(f"{Fore.RED + Style.BRIGHT}2. Exit{Style.RESET_ALL}")
-                choose = int(input("Choose action [1/2] -> ").strip())
+                print(f"{Fore.GREEN + Style.BRIGHT}1. Farm & Claim Daily Reward with Proxy{Style.RESET_ALL}")
+                print(f"{Fore.GREEN + Style.BRIGHT}2. Farm & Claim Daily Reward without Proxy{Style.RESET_ALL}")
+                print(f"{Fore.RED + Style.BRIGHT}3. Exit{Style.RESET_ALL}")
+                choose = int(input("Choose action [1/2/3] -> ").strip())
 
                 if choose == 1:
                     print(f"{Fore.GREEN + Style.BRIGHT}Starting Farm mode with proxy.{Style.RESET_ALL}")
                     return 1
                 elif choose == 2:
+                    print(f"{Fore.GREEN + Style.BRIGHT}Starting Farm mode without proxy.{Style.RESET_ALL}")
+                    return 2
+                elif choose == 3:
                     print(f"{Fore.RED + Style.BRIGHT}Exiting program.{Style.RESET_ALL}")
                     sys.exit(0)
                 else:
-                    print(f"{Fore.RED + Style.BRIGHT}Please enter 1 or 2.{Style.RESET_ALL}")
+                    print(f"{Fore.RED + Style.BRIGHT}Please enter 1, 2 or 3.{Style.RESET_ALL}")
             except ValueError:
-                print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter a number (1 or 2).{Style.RESET_ALL}")
+                print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter a number (1, 2 or 3).{Style.RESET_ALL}")
             except KeyboardInterrupt:
                 print(f"\n{Fore.RED + Style.BRIGHT}Program interrupted by user.{Style.RESET_ALL}")
                 sys.exit(0)
@@ -744,7 +748,7 @@ class OepnLedger:
                 self.log(f"{Fore.RED+Style.BRIGHT}No accounts loaded.{Style.RESET_ALL}")
                 return
             self.welcome()
-            choice = self.print_question()  # Now method returns only 1 (Farm) or exits program
+            choice = self.print_question()  # Now method returns 1 (Farm with proxy), 2 (Farm without proxy) or exits program
 
             self.clear_terminal()
             self.welcome()
@@ -753,11 +757,16 @@ class OepnLedger:
                 f"{Fore.WHITE + Style.BRIGHT}{len(accounts)}{Style.RESET_ALL}"
             )
 
-            # Always load proxies in Farm mode
-            await self.load_proxies(choice)
-            if not self.proxies:
-                self.log(f"{Fore.RED+Style.BRIGHT}No proxies loaded. Cannot continue.{Style.RESET_ALL}")
-                return
+            # Загружаем прокси только если выбран режим с прокси
+            use_proxy = (choice == 1)
+            if use_proxy:
+                await self.load_proxies(choice)
+                if not self.proxies:
+                    self.log(f"{Fore.RED+Style.BRIGHT}No proxies loaded. Cannot continue in proxy mode.{Style.RESET_ALL}")
+                    return
+                self.log(f"{Fore.GREEN + Style.BRIGHT}Using proxy mode for farming.{Style.RESET_ALL}")
+            else:
+                self.log(f"{Fore.GREEN + Style.BRIGHT}Using direct connection mode (no proxy) for farming.{Style.RESET_ALL}")
                 
             self.log(f"{Fore.CYAN + Style.BRIGHT}-{Style.RESET_ALL}"*75)
 
@@ -768,8 +777,8 @@ class OepnLedger:
                         address = account["Address"]
                         token = account["Access_Token"]
                         if address and token:
-                            tasks.append(asyncio.create_task(self.process_accounts(address, token, True)))
-                            tasks.append(asyncio.create_task(self.process_claim_checkin_reward(address, token, True)))
+                            tasks.append(asyncio.create_task(self.process_accounts(address, token, use_proxy)))
+                            tasks.append(asyncio.create_task(self.process_claim_checkin_reward(address, token, use_proxy)))
 
                 await asyncio.gather(*tasks)
                 await asyncio.sleep(10)

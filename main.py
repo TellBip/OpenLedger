@@ -684,7 +684,130 @@ class OepnLedger:
                     self.print_message(address, proxy, Fore.YELLOW,
                         "Daily Check-In Reward Is Already Claimed"
                     )
-            await asyncio.sleep(24 * 60 * 60)
+            await asyncio.sleep(8 * 60 * 60)
+
+    async def tier_details(self, address: str, token: str, use_proxy: bool, proxy=None):
+        url = "https://rewardstn.openledger.xyz/web/api/v2/streak"
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+
+        try:
+            formatted_proxy = self.format_proxy_url(proxy) if use_proxy and proxy else None
+            response = await asyncio.to_thread(requests.get, url=url, headers=headers, proxy=formatted_proxy, timeout=60, impersonate="safari15_5", verify=False)
+            response.raise_for_status()
+            result = response.json()
+            return result['data']
+        except Exception as e:
+            self.print_message(address, proxy, Fore.RED, f"GET Tier Data Failed: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
+            proxy = self.rotate_proxy_for_account(address) if use_proxy else None
+            await asyncio.sleep(5)
+            return None
+    
+    async def claim_tier_reward(self, address: str, token: str, milestone_id: int, use_proxy: bool, proxy=None):
+        url = f"https://rewardstn.openledger.xyz/web/api/v2/streak-claim/{milestone_id}"
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+
+        try:
+            formatted_proxy = self.format_proxy_url(proxy) if use_proxy and proxy else None
+            response = await asyncio.to_thread(requests.get, url=url, headers=headers, proxy=formatted_proxy, timeout=60, impersonate="safari15_5", verify=False)
+            response.raise_for_status()
+            result = response.json()
+            
+            if result.get('status') == 'SUCCESS' and result.get('data') == True:
+                #self.print_message(address, proxy, Fore.GREEN, f"Миллстоун {milestone_id} успешно получен!")
+                return True
+            else:
+                error_msg = result.get('message', 'Неизвестная ошибка')
+                #self.print_message(address, proxy, Fore.RED, f"Ошибка при клейме миллстоуна {milestone_id}: {error_msg}")
+                return False
+                
+        except Exception as e:
+            self.print_message(address, proxy, Fore.RED, f"Failed to claim milestone {milestone_id}: {str(e)}")
+            proxy = self.rotate_proxy_for_account(address) if use_proxy else None
+            await asyncio.sleep(5)
+            return False
+        
+    async def process_claim_tier_reward(self, address: str, token: str, use_proxy: bool):
+        while True:
+            proxy = self.get_next_proxy_for_account(address) if use_proxy else None
+            tier = await self.tier_details(address, token, use_proxy, proxy)
+                
+            special_days = {7, 14, 21, 28}
+
+            
+            for item in tier:
+                day = item.get('day')
+                if day in special_days:
+                    show_btn = item.get('showClaimButton', False)
+                    milestone = item.get('milestoneClaim', True)
+                    _id = item.get('id')
+                    points = item.get('points', '-')
+                    
+                    # Можно клеймить если showClaimButton=true и milestoneClaim=false
+                    if show_btn and not milestone:
+                        self.print_message(address, proxy, Fore.GREEN, f"Day {day} - CAN CLAIM! ID: {_id} | Points: {points}")
+                        
+                        if _id:
+                            #self.print_message(address, proxy, Fore.CYAN, f"Sending request to claim milestone for day {day}")
+                            result = await self.claim_tier_reward(address, token, _id, use_proxy, proxy)
+                            if result:
+                                self.print_message(address, proxy, Fore.GREEN, f"Streak {day} successfully claimed! +{points} points")
+                            else:
+                                self.print_message(address, proxy, Fore.RED, f"Failed to claim streak {day}")
+                        else:
+                            self.print_message(address, proxy, Fore.YELLOW, f"Day {day} - ID not found, cannot claim")
+                        
+                    #else:
+                        #self.print_message(address, proxy, Fore.YELLOW, f"Day {day} - CANNOT CLAIM | ID: {_id} | Points: {points}")
+            
+            await asyncio.sleep(24 * 60 * 60)  # Проверяем каждые 12 часов
+
+    async def reward_details(self, address: str, token: str, use_proxy: bool, proxy=None):
+        url = "https://rewardstn.openledger.xyz/web/api/v2/worker_reward"
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
+        }
+
+        try:
+            formatted_proxy = self.format_proxy_url(proxy) if use_proxy and proxy else None
+            response = await asyncio.to_thread(requests.get, url=url, headers=headers, proxy=formatted_proxy, timeout=60, impersonate="safari15_5", verify=False)
+            response.raise_for_status()
+            result = response.json()
+            return result['data']
+        except Exception as e:
+            self.print_message(address, proxy, Fore.RED, f"GET reward Data Failed: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
+            proxy = self.rotate_proxy_for_account(address) if use_proxy else None
+            await asyncio.sleep(5)
+            return None
+        
+    async def process_reward(self, address: str, token: str, use_proxy: bool):
+        while True:
+            proxy = self.get_next_proxy_for_account(address) if use_proxy else None
+            reward = await self.reward_details(address, token, use_proxy, proxy)
+            if isinstance(reward, list):
+                total = 0
+                for item in reward:
+                    miner_id = item.get('identity', '-')
+                    points = int(item.get('point', 0))
+                    total += points
+                    self.print_message(address, proxy, Fore.GREEN,
+                            f"Miner_id: {miner_id} "
+                            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT} Reward: {Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT}{points} PTS{Style.RESET_ALL}"
+                        )
+            else:
+                print(reward)
+            await asyncio.sleep(3 * 60 * 60)
 
     async def nodes_communicate(self, address: str, token: str, msg_type: str, payload: dict, use_proxy: bool, proxy=None):
         url = "https://apitn.openledger.xyz/ext/api/v2/nodes/communicate"
@@ -779,6 +902,8 @@ class OepnLedger:
                         if address and token:
                             tasks.append(asyncio.create_task(self.process_accounts(address, token, use_proxy)))
                             tasks.append(asyncio.create_task(self.process_claim_checkin_reward(address, token, use_proxy)))
+                            tasks.append(asyncio.create_task(self.process_reward(address, token, use_proxy)))
+                            tasks.append(asyncio.create_task(self.process_claim_tier_reward(address, token, use_proxy)))
 
                 await asyncio.gather(*tasks)
                 await asyncio.sleep(10)
